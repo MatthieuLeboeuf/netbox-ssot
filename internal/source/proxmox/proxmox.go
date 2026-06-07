@@ -79,6 +79,7 @@ func (ps *ProxmoxSource) Init() error {
 // Function that syncs all collected data to Netbox inventory.
 func (ps *ProxmoxSource) Sync(nbi *inventory.NetboxInventory) error {
 	syncFunctions := []func(*inventory.NetboxInventory) error{
+		ps.syncNetworks,
 		ps.syncCluster,
 		ps.syncNodes,
 		ps.syncVMs,

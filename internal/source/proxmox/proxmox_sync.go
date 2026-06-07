@@ -82,6 +82,72 @@ func (ps *ProxmoxSource) syncCluster(nbi *inventory.NetboxInventory) error {
 	return nil
 }
 
+func (ps *ProxmoxSource) syncNetworks(nbi *inventory.NetboxInventory) error {
+	zones, _ := ps.Cluster.SDNZones(ps.Ctx)
+	for _, zone := range zones {
+		if zone.Type != "vlan" {
+			continue
+		}
+
+		vnets, _ := ps.Cluster.SDNVNets(ps.Ctx)
+		for _, vnet := range vnets {
+			if vnet.Zone != zone.Name {
+				continue
+			}
+
+			vlanSite, err := common.MatchVlanToSite(
+				ps.Ctx,
+				nbi,
+				vnet.Name,
+				ps.SourceConfig.VlanSiteRelations,
+			)
+			if err != nil {
+				return fmt.Errorf("match vlan to site: %s", err)
+			}
+			vlanGroup, err := common.MatchVlanToGroup(
+				ps.Ctx,
+				nbi,
+				vnet.Name,
+				vlanSite,
+				ps.SourceConfig.VlanGroupRelations,
+				ps.SourceConfig.VlanGroupSiteRelations,
+				"",
+			)
+			if err != nil {
+				return fmt.Errorf("match vlan to group: %s", err)
+			}
+			// Get tenant from relations
+			vlanTenant, err := common.MatchVlanToTenant(
+				ps.Ctx,
+				nbi,
+				vnet.Name,
+				ps.SourceConfig.VlanTenantRelations,
+			)
+			if err != nil {
+				return fmt.Errorf("vlanTenant: %s", err)
+			}
+
+			vlanStruct := &objects.Vlan{
+				NetboxObject: objects.NetboxObject{
+					Tags:        append(ps.GetSourceTags()),
+					Description: vnet.Alias,
+				},
+				Name:   vnet.Name,
+				Group:  vlanGroup,
+				Site:   vlanSite,
+				Vid:    int(vnet.Tag),
+				Status: &objects.VlanStatusActive,
+				Tenant: vlanTenant,
+			}
+			_, err = nbi.AddVlan(ps.Ctx, vlanStruct)
+			if err != nil {
+				return fmt.Errorf("add vlan %+v: %s", vlanStruct, err)
+			}
+		}
+	}
+	return nil
+}
+
 func (ps *ProxmoxSource) syncNodes(nbi *inventory.NetboxInventory) error {
 	ps.NetboxNodes = make(map[string]*objects.Device, len(ps.Nodes))
 
